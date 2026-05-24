@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EMI SCAN MATLAB</title>
+<style>
+:root{
+  --bg:#07090c;
+  --panel:#101720;
+  --cyan:#00eaff;
+  --green:#00ff88;
+  --yellow:#ffd84d;
+  --red:#ff4040;
+  --text:#e8f0f2;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:radial-gradient(circle at top,#14202b 0,#07090c 45%,#030405 100%);
+  color:var(--text);
+  font-family:Arial, Helvetica, sans-serif;
+  padding:18px;
+}
+h1{
+  margin:0 0 6px;
+  color:var(--cyan);
+  letter-spacing:1px;
+}
+h2{color:var(--green); margin-top:0}
+.card{
+  background:rgba(16,23,32,.92);
+  border:1px solid rgba(0,234,255,.55);
+  border-radius:14px;
+  padding:15px;
+  margin:14px 0;
+  box-shadow:0 0 18px rgba(0,234,255,.12);
+}
+.grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(130px,1fr));
+  gap:10px;
+}
+.metric{
+  background:#080d12;
+  border:1px solid #1b3342;
+  border-radius:12px;
+  padding:12px;
+}
+.label{font-size:12px;color:#91a7b4}
+.value{font-size:28px;font-weight:bold;margin-top:4px}
+.emi{color:var(--yellow)}
+.e{color:var(--green)}
+.h{color:var(--cyan)}
+pre{
+  background:#05080b;
+  color:var(--green);
+  padding:14px;
+  border-radius:12px;
+  overflow:auto;
+  border:1px solid rgba(0,255,136,.45);
+  font-size:13px;
+}
+button{
+  background:#00eaff;
+  color:#001015;
+  border:none;
+  border-radius:10px;
+  padding:10px 14px;
+  font-weight:bold;
+  cursor:pointer;
+}
+a{color:var(--cyan)}
+small{color:#9fb2bd}
+</style>
+</head>
+<body>
+
+<h1>EMI SCAN</h1>
+<small>WebServer interno · MATLAB Connection · ESP32-S3</small>
+
+<div class="card">
+  <h2>Datos en vivo</h2>
+  <div class="grid">
+    <div class="metric">
+      <div class="label">EMI relativo</div>
+      <div class="value emi" id="emi">--%</div>
+    </div>
+    <div class="metric">
+      <div class="label">E-Field</div>
+      <div class="value e" id="efield">--%</div>
+    </div>
+    <div class="metric">
+      <div class="label">H-Field</div>
+      <div class="value h" id="hfield">--%</div>
+    </div>
+    <div class="metric">
+      <div class="label">Distancia ToF</div>
+      <div class="value" id="dist">-- cm</div>
+    </div>
+  </div>
+  <br>
+  <button onclick="calibrar()">Recalibrar baseline</button>
+  <p><small>Endpoint JSON: <a href="/data">/data</a> · Calibración: <a href="/calibrate">/calibrate</a></small></p>
+</div>
+
+<div class="card">
+  <h2>Código MATLAB listo para copiar</h2>
+<pre>clear;
+clc;
+close all;
+
+url = "http://192.168.4.1/data";
+
+figure("Name","EMI SCAN - MATLAB");
+tiledlayout(3,1);
+
+ax1 = nexttile;
+h1 = animatedline("LineWidth",1.5);
+grid on;
+title("Indice EMI relativo");
+ylabel("EMI %");
+ylim([0 100]);
+
+ax2 = nexttile;
+h2 = animatedline("LineWidth",1.5);
+grid on;
+title("E-Field / H-Field");
+ylabel("%");
+ylim([0 100]);
+hold on;
+h3 = animatedline("LineWidth",1.5);
+legend("E-Field","H-Field");
+
+ax3 = nexttile;
+h4 = animatedline("LineWidth",1.5);
+grid on;
+title("Distancia ToF VL53L4CD");
+ylabel("cm");
+xlabel("Muestras");
+
+n = 0;
+
+while true
+    n = n + 1;
+
+    data = webread(url);
+
+    emi = data.emiPercent;
+    efield = data.ePercent;
+    hfield = data.hPercent;
+
+    if data.tof_valid == 1
+        dist_cm = data.distance_cm;
+    else
+        dist_cm = NaN;
+    end
+
+    addpoints(h1,n,emi);
+    addpoints(h2,n,efield);
+    addpoints(h3,n,hfield);
+    addpoints(h4,n,dist_cm);
+
+    fprintf("EMI:%3.0f%% | E:%3.0f%% | H:%3.0f%% | Dist: %.1f cm | Mag: %.2f uT\n", ...
+        emi, efield, hfield, dist_cm, data.mag_total);
+
+    drawnow limitrate;
+    pause(0.1);
+end</pre>
+</div>
+
+<script>
+async function updateData(){
+  try{
+    const r = await fetch("/data");
+    const d = await r.json();
+
+    document.getElementById("emi").textContent = d.emiPercent + "%";
+    document.getElementById("efield").textContent = d.ePercent + "%";
+    document.getElementById("hfield").textContent = d.hPercent + "%";
+
+    if(d.tof_valid == 1){
+      document.getElementById("dist").textContent = Number(d.distance_cm).toFixed(1) + " cm";
+    }else{
+      document.getElementById("dist").textContent = "-- cm";
+    }
+  }catch(e){
+    console.log("Sin datos", e);
+  }
+}
+
+async function calibrar(){
+  await fetch("/calibrate");
+  alert("Baseline recalibrado");
+}
+
+setInterval(updateData, 500);
+updateData();
+</script>
+
+</body>
+</html>
